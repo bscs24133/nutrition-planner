@@ -79,6 +79,18 @@ def load_model():
     )
     with torch.no_grad():
         text_features = model.get_text_features(**text_inputs)
+    # Some transformer/transformers versions return a BaseModelOutputWithPooling
+    # object instead of a raw tensor. Handle both cases by extracting the
+    # pooled/text embedding tensor if necessary.
+    if not isinstance(text_features, torch.Tensor):
+        if hasattr(text_features, "pooler_output") and text_features.pooler_output is not None:
+            text_features = text_features.pooler_output
+        elif hasattr(text_features, "last_hidden_state") and text_features.last_hidden_state is not None:
+            # fallback: mean pool the last hidden state
+            text_features = text_features.last_hidden_state.mean(dim=1)
+        else:
+            raise RuntimeError("Unexpected return type from model.get_text_features()")
+
     text_features = text_features / text_features.norm(dim=-1, keepdim=True)
 
     return processor, model, text_features
@@ -89,6 +101,14 @@ def classify_image(image, processor, model, text_features):
     img_inputs = processor(images=image, return_tensors="pt")
     with torch.no_grad():
         img_features = model.get_image_features(pixel_values=img_inputs["pixel_values"])
+    if not isinstance(img_features, torch.Tensor):
+        if hasattr(img_features, "pooler_output") and img_features.pooler_output is not None:
+            img_features = img_features.pooler_output
+        elif hasattr(img_features, "last_hidden_state") and img_features.last_hidden_state is not None:
+            img_features = img_features.last_hidden_state.mean(dim=1)
+        else:
+            raise RuntimeError("Unexpected return type from model.get_image_features()")
+
     img_features = img_features / img_features.norm(dim=-1, keepdim=True)
 
     scale = model.logit_scale.exp()

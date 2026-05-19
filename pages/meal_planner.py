@@ -36,8 +36,12 @@ def build_prompt(p):
 Return ONLY valid JSON, no markdown fences. Exact structure:
 {{"day_1":{{"breakfast":{{"meal_name":"...","description":"...","calories":0,"protein_g":0,"carbs_g":0,"fat_g":0}},"lunch":{{...}},"dinner":{{...}},"snacks":{{...}}}},"day_2":{{...}},...,"day_7":{{...}}}}
 
-Rules: each day ≈ {p['calories']} kcal (±100). Realistic values. Respect all restrictions. Vary meals."""
-
+Rules:
+- Each day total ≈ {p['calories']} kcal (±100)
+- Respect ALL dietary restrictions strictly
+- Use realistic calorie/macro values
+- Keep meal descriptions under 10 words
+- Vary meals across days"""
 
 def parse_plan(text):
     cleaned = re.sub(r"```(?:json)?", "", text).strip().rstrip("`")
@@ -56,22 +60,40 @@ def parse_plan(text):
 def generate_plan(profile):
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
-        st.error("🔑 **GROQ_API_KEY** not found. Add it to your `.env` file.")
+        st.error("🔑 GROQ_API_KEY not found. Add it to your .env file.")
         return None
-    try:
-        client = Groq(api_key=api_key)
-        resp = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {"role": "system", "content": "You are a nutritionist AI. Respond with valid JSON only."},
-                {"role": "user", "content": build_prompt(profile)},
-            ],
-            temperature=0.7, max_tokens=4096,
-        )
-        return parse_plan(resp.choices[0].message.content)
-    except Exception as e:
-        st.error(f"❌ Groq API error: {e}")
-        return None
+
+    # Try up to 3 times
+    for attempt in range(3):
+        try:
+            client = Groq(api_key=api_key)
+            resp = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[
+                    {"role": "system",
+                     "content": "You are a nutritionist AI. Respond with valid JSON only."},
+                    {"role": "user",
+                     "content": build_prompt(profile)},
+                ],
+                temperature=0.7,
+                max_tokens=2000,  # reduced from 4096
+                timeout=30,       # 30 second timeout
+            )
+            result = parse_plan(resp.choices[0].message.content)
+            if result:
+                return result
+            # If parse failed, try again
+            if attempt < 2:
+                st.warning(f"⚠️ Attempt {attempt+1} failed, retrying...")
+                continue
+
+        except Exception as e:
+            if attempt == 2:
+                st.error(f"❌ Failed after 3 attempts: {e}")
+                return None
+            st.warning(f"⚠️ Attempt {attempt+1} failed, retrying...")
+
+    return None
 
 
 MEAL_ICONS = {"breakfast": "🌅", "lunch": "☀️", "dinner": "🌙", "snacks": "🍎"}
@@ -79,13 +101,36 @@ MEAL_ICONS = {"breakfast": "🌅", "lunch": "☀️", "dinner": "🌙", "snacks"
 
 def render_meal(meal_type, data):
     icon = MEAL_ICONS.get(meal_type, "🍴")
-    with st.expander(f"{icon}  **{meal_type.capitalize()}** — {data['meal_name']}", expanded=True):
-        st.caption(data.get("description", ""))
+    # Defensive rendering: the AI may return incomplete data, so use .get() with
+    # sensible defaults to avoid KeyError and keep the UI stable.
+    if not isinstance(data, dict):
+        st.warning("Malformed meal data")
+        return
+
+    meal_name = data.get("meal_name", "Unknown Meal")
+    description = data.get("description", "")
+
+    def fmt(val, suffix):
+        if val is None:
+            return "—"
+        try:
+            return f"{int(val):,} {suffix}" if isinstance(val, (int, float)) else f"{val} {suffix}"
+        except Exception:
+            return str(val)
+
+    cal_text = fmt(data.get("calories"), "kcal")
+    prot_text = fmt(data.get("protein_g"), "g")
+    carb_text = fmt(data.get("carbs_g"), "g")
+    fat_text = fmt(data.get("fat_g"), "g")
+
+    with st.expander(f"{icon}  **{meal_type.capitalize()}** — {meal_name}", expanded=True):
+        if description:
+            st.caption(description)
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Calories", f"{data['calories']} kcal")
-        c2.metric("Protein", f"{data['protein_g']} g")
-        c3.metric("Carbs", f"{data['carbs_g']} g")
-        c4.metric("Fat", f"{data['fat_g']} g")
+        c1.metric("Calories", cal_text)
+        c2.metric("Protein", prot_text)
+        c3.metric("Carbs", carb_text)
+        c4.metric("Fat", fat_text)
 
 
 def render_weekly(plan):

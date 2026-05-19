@@ -86,16 +86,3 @@ st.info(
     icon="💡",
 )
 
-with st.expander("📋 Setup Instructions"):
-    st.markdown(
-        """
-        1. **Install dependencies** — `pip install -r requirements.txt`
-        2. **Create a `.env` file** with your Groq API key — `GROQ_API_KEY=gsk_xxx`
-        3. **Run the app** — `python -m streamlit run app.py`
-        """
-    )
-
-st.markdown(
-    '<div class="app-footer">Built with ❤️ using Streamlit · Groq · HuggingFace Transformers</div>',
-    unsafe_allow_html=True,
-)

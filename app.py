@@ -1,4 +1,5 @@
 import streamlit as st
+from pathlib import Path
 
 # ── Page Configuration ──────────────────────────────────────────────
 st.set_page_config(
@@ -64,9 +65,10 @@ st.markdown(
 )
 
 # ── Navigation ──────────────────────────────────────────────────────
-home_page = st.Page("pages/home.py", title="Home", icon="🏠")
-meal_planner_page = st.Page("pages/meal_planner.py", title="Meal Planner", icon="🍽️")
-food_analyzer_page = st.Page("pages/food_analyzer.py", title="Food Analyzer", icon="📸")
+base_path = Path(__file__).resolve().parent
+home_page = st.Page(str(base_path / "pages" / "home.py"), title="Home", icon="🏠")
+meal_planner_page = st.Page(str(base_path / "pages" / "meal_planner.py"), title="Meal Planner", icon="🍽️")
+food_analyzer_page = st.Page(str(base_path / "pages" / "food_analyzer.py"), title="Food Analyzer", icon="📸")
 
 pg = st.navigation([home_page, meal_planner_page, food_analyzer_page])
 pg.run()
