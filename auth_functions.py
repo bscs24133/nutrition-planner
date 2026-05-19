@@ -44,7 +44,9 @@ def sign_in(email, password):
             return False, "Invalid email or password."
     except Exception as e:
         error_str = str(e).lower()
-        if "invalid credentials" in error_str or "invalid login" in error_str:
+        if "email not confirmed" in error_str:
+            return False, "📧 Email not confirmed. Please check your inbox for a confirmation link, or disable email confirmation in Supabase settings for development."
+        elif "invalid credentials" in error_str or "invalid login" in error_str:
             return False, "Invalid email or password."
         elif "user not found" in error_str:
             return False, "No account found with this email. Please sign up."
