@@ -10,15 +10,25 @@ def sign_up(email, password, full_name):
         user = response.user
 
         if user:
-            # Save name to profiles table
-            supabase.table("profiles").insert({
-                "id": user.id,
-                "full_name": full_name
-            }).execute()
+            # Try to save name to profiles table (optional)
+            try:
+                supabase.table("profiles").insert({
+                    "id": user.id,
+                    "full_name": full_name
+                }).execute()
+            except Exception as profile_err:
+                # Profile table may not exist yet, but signup is still successful
+                print(f"Warning: Could not save profile: {profile_err}")
 
-        return True, "Account created successfully!"
+        return True, "Account created successfully! Please login with your credentials."
     except Exception as e:
-        return False, str(e)
+        error_str = str(e).lower()
+        if "already exists" in error_str or "user already registered" in error_str:
+            return False, "Email already registered. Please login instead."
+        elif "password" in error_str:
+            return False, "Password does not meet requirements (min 6 characters)."
+        else:
+            return False, f"Signup failed: {str(e)}"
 
 
 def sign_in(email, password):
@@ -28,9 +38,18 @@ def sign_in(email, password):
             "email": email,
             "password": password
         })
-        return True, response.user
+        if response.user:
+            return True, response.user
+        else:
+            return False, "Invalid email or password."
     except Exception as e:
-        return False, str(e)
+        error_str = str(e).lower()
+        if "invalid credentials" in error_str or "invalid login" in error_str:
+            return False, "Invalid email or password."
+        elif "user not found" in error_str:
+            return False, "No account found with this email. Please sign up."
+        else:
+            return False, f"Login failed: {str(e)}"
 
 
 def sign_out():
