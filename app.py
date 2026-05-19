@@ -64,11 +64,44 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# ── Initialize Session State ────────────────────────────────────────
+if "user" not in st.session_state:
+    st.session_state.user = None
+
 # ── Navigation ──────────────────────────────────────────────────────
 base_path = Path(__file__).resolve().parent
-home_page = st.Page(str(base_path / "pages" / "home.py"), title="Home", icon="🏠")
-meal_planner_page = st.Page(str(base_path / "pages" / "meal_planner.py"), title="Meal Planner", icon="🍽️")
-food_analyzer_page = st.Page(str(base_path / "pages" / "food_analyzer.py"), title="Food Analyzer", icon="📸")
 
-pg = st.navigation([home_page, meal_planner_page, food_analyzer_page])
+if st.session_state.user:
+    # User is authenticated — show all app pages
+    home_page = st.Page(str(base_path / "pages" / "home.py"), title="Home", icon="🏠")
+    meal_planner_page = st.Page(str(base_path / "pages" / "meal_planner.py"), title="Meal Planner", icon="🍽️")
+    food_analyzer_page = st.Page(str(base_path / "pages" / "food_analyzer.py"), title="Food Analyzer", icon="📸")
+    saved_plans_page = st.Page(str(base_path / "pages" / "saved_plans.py"), title="Saved Plans", icon="📊")
+    profile_page = st.Page(str(base_path / "pages" / "profile.py"), title="My Profile", icon="👤")
+    
+    pages = [home_page, meal_planner_page, food_analyzer_page, saved_plans_page, profile_page]
+    
+    # Add logout button in sidebar
+    with st.sidebar:
+        st.title("🥗 Nutrition Planner")
+        email = st.session_state.get("user_email", "User")
+        st.success(f"👤 {email}")
+        st.divider()
+        
+        if st.button("🚪 Logout", type="secondary", use_container_width=True):
+            try:
+                from auth_functions import sign_out
+                sign_out()
+            except Exception:
+                pass
+            st.session_state.user = None
+            st.session_state.user_email = None
+            st.rerun()
+else:
+    # User is not authenticated — show only auth page
+    auth_page = st.Page(str(base_path / "pages" / "auth.py"), title="Login", icon="🔐")
+    pages = [auth_page]
+
+pg = st.navigation(pages)
 pg.run()
+
