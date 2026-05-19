@@ -27,21 +27,25 @@ def daily_calories(bmr, act, goal):
 
 def build_prompt(p):
     fb = f'\n\nUser feedback on previous plan — incorporate it:\n"{p["feedback"]}"\n' if p.get("feedback") else ""
+    diet_str = ", ".join(p['diet_type']) if isinstance(p['diet_type'], list) else p['diet_type']
     return f"""You are an expert registered dietitian. Create a 7-day meal plan for:
 - Age: {p['age']}  Gender: {p['gender']}  Weight: {p['weight']}kg  Height: {p['height']}cm
-- Activity: {p['activity']}  Goal: {p['goal']}  Diet: {p['diet_type']}
+- Activity: {p['activity']}  Goal: {p['goal']}  Diet: {diet_str}
 - Allergies: {p['allergies'] or 'None'}  Avoid: {p['avoid'] or 'None'}
 - Daily Calorie Target: {p['calories']} kcal
 {fb}
 Return ONLY valid JSON, no markdown fences. Exact structure:
-{{"day_1":{{"breakfast":{{"meal_name":"...","description":"...","calories":0,"protein_g":0,"carbs_g":0,"fat_g":0}},"lunch":{{...}},"dinner":{{...}},"snacks":{{...}}}},"day_2":{{...}},...,"day_7":{{...}}}}
+{{"day_1":{{"breakfast":{{"meal_name":"...","description":"...","ingredients":[{{"item":"eggs","quantity":"2","unit":"whole"}},{{"item":"cheese","quantity":"1","unit":"slice"}}],"calories":0,"protein_g":0,"carbs_g":0,"fat_g":0}},"lunch":{{...}},"dinner":{{...}},"snacks":{{...}}}},"day_2":{{...}},...,"day_7":{{...}}}}
 
 Rules:
 - Each day total ≈ {p['calories']} kcal (±100)
 - Respect ALL dietary restrictions strictly
 - Use realistic calorie/macro values
 - Keep meal descriptions under 10 words
-- Vary meals across days"""
+- Vary meals across days
+- For EACH meal, include an "ingredients" array with {{"item","quantity","unit"}} objects
+- Quantity examples: "2", "1/2", "150" (as string). Unit examples: "whole", "slice", "cup", "tbsp", "g", "ml"
+- Be specific and practical (e.g., "2 slices" toast, "150g" chicken, "1 cup" rice)"""
 
 def parse_plan(text):
     cleaned = re.sub(r"```(?:json)?", "", text).strip().rstrip("`")
@@ -109,6 +113,7 @@ def render_meal(meal_type, data):
 
     meal_name = data.get("meal_name", "Unknown Meal")
     description = data.get("description", "")
+    ingredients = data.get("ingredients", [])
 
     def fmt(val, suffix):
         if val is None:
@@ -126,6 +131,22 @@ def render_meal(meal_type, data):
     with st.expander(f"{icon}  **{meal_type.capitalize()}** — {meal_name}", expanded=True):
         if description:
             st.caption(description)
+        
+        # Display ingredients if available
+        if ingredients and isinstance(ingredients, list) and len(ingredients) > 0:
+            st.markdown("**🥘 Ingredients:**")
+            ing_text = ""
+            for ing in ingredients:
+                if isinstance(ing, dict):
+                    item = ing.get("item", "")
+                    quantity = ing.get("quantity", "")
+                    unit = ing.get("unit", "")
+                    if item:
+                        ing_text += f"• {quantity} {unit} {item}\n" if quantity and unit else f"• {item}\n"
+            if ing_text:
+                st.markdown(ing_text)
+        
+        # Display macros
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Calories", cal_text)
         c2.metric("Protein", prot_text)
@@ -171,10 +192,10 @@ with st.form("meal_planner_form"):
     r2c1, r2c2, r2c3 = st.columns(3)
     activity = r2c1.selectbox("Activity Level", list(ACTIVITY_MULTIPLIERS))
     goal = r2c2.selectbox("Fitness Goal", list(GOAL_ADJUSTMENTS))
-    diet_type = r2c3.selectbox("Dietary Type", [
+    diet_type = r2c3.multiselect("Dietary Type (select 1 or more)", [
         "No Restriction", "Vegetarian", "Vegan", "Pescatarian", "Keto",
         "Paleo", "Mediterranean", "Gluten-Free", "Halal", "Kosher",
-    ])
+    ], default=["No Restriction"])
 
     r3c1, r3c2 = st.columns(2)
     allergies = r3c1.text_input("Allergies", placeholder="e.g. peanuts, shellfish")
@@ -187,6 +208,7 @@ if submitted:
     errs = []
     if not 10 <= age <= 100: errs.append("Age must be 10-100.")
     if not 20 <= weight <= 300: errs.append("Weight must be 20-300 kg.")
+    if not diet_type or len(diet_type) == 0: errs.append("Please select at least one dietary type.")
     for e in errs: st.error(e)
     if not errs:
         bmr = calculate_bmr(weight, height, age, gender)
@@ -199,7 +221,7 @@ if submitted:
         st.markdown('<p class="section-header">👤 Your Profile Summary</p>', unsafe_allow_html=True)
         p1, p2, p3, p4 = st.columns(4)
         p1.metric("BMR", f"{bmr:.0f} kcal"); p2.metric("Daily Target", f"{cals:,} kcal")
-        p3.metric("Goal", goal); p4.metric("Diet Type", diet_type)
+        p3.metric("Goal", goal); p4.metric("Diet Types", ", ".join(diet_type) if diet_type else "None")
         st.divider()
 
         with st.spinner("🧠 Generating your personalised meal plan…"):
