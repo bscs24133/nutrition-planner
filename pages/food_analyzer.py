@@ -1,7 +1,12 @@
+import os
 import streamlit as st
 from PIL import Image
 from transformers import CLIPProcessor, CLIPModel
 import torch
+from dotenv import load_dotenv
+from groq import Groq
+
+load_dotenv()
 
 # ═══════════════════════════════════════════════════════════════════
 #  CLIP zero-shot food classifier — identifies 200+ foods including
@@ -65,6 +70,169 @@ FOOD_LABELS = [
 
 MULTI_DETECT_THRESHOLD = 0.04  # 4% — show as "also detected"
 
+NUTRITION_DATABASE = {
+    "pizza": {
+        "calories": "285 per serving",
+        "protein": "12g",
+        "carbs": "36g",
+        "fat": "10g",
+        "serving_size": "107 grams",
+        "health_rating": "🟡 Moderate",
+        "why": "High in carbs and sodium",
+        "healthier_alternative": "Whole wheat vegetable pizza",
+    },
+    "burger": {
+        "calories": "354 per serving",
+        "protein": "17g",
+        "carbs": "29g",
+        "fat": "20g",
+        "serving_size": "120 grams",
+        "health_rating": "🟡 Moderate",
+        "why": "High in saturated fat and sodium",
+        "healthier_alternative": "Grilled turkey burger with salad",
+    },
+    "salad": {
+        "calories": "130 per serving",
+        "protein": "3g",
+        "carbs": "10g",
+        "fat": "8g",
+        "serving_size": "150 grams",
+        "health_rating": "🟢 Healthy",
+        "why": "Low calorie and rich in vegetables",
+        "healthier_alternative": "Add grilled chicken and avocado",
+    },
+    "sushi": {
+        "calories": "206 per serving",
+        "protein": "6g",
+        "carbs": "29g",
+        "fat": "7g",
+        "serving_size": "100 grams",
+        "health_rating": "🟡 Moderate",
+        "why": "Contains refined rice and sodium-rich soy sauce",
+        "healthier_alternative": "Brown rice sushi with veggies",
+    },
+    "fried chicken": {
+        "calories": "320 per serving",
+        "protein": "25g",
+        "carbs": "8g",
+        "fat": "22g",
+        "serving_size": "150 grams",
+        "health_rating": "🔴 Less healthy",
+        "why": "High in fried fat and calories",
+        "healthier_alternative": "Baked chicken breast with herbs",
+    },
+    "pasta": {
+        "calories": "221 per serving",
+        "protein": "8g",
+        "carbs": "43g",
+        "fat": "1.3g",
+        "serving_size": "140 grams",
+        "health_rating": "🟡 Moderate",
+        "why": "High in carbs unless paired with vegetables",
+        "healthier_alternative": "Whole wheat pasta with tomato sauce",
+    },
+}
+
+
+def get_nutrition_info(label):
+    key = label.lower().strip()
+    if key in NUTRITION_DATABASE:
+        return NUTRITION_DATABASE[key]
+    # fallback by substring matching
+    for candidate in NUTRITION_DATABASE:
+        if candidate in key:
+            return NUTRITION_DATABASE[candidate]
+    return {
+        "calories": "N/A",
+        "protein": "N/A",
+        "carbs": "N/A",
+        "fat": "N/A",
+        "serving_size": "N/A",
+        "health_rating": "🟡 Estimated",
+        "why": "Nutrition data unavailable for this food label.",
+        "healthier_alternative": "Try a whole-food alternative",
+    }
+
+
+@st.cache_data
+def query_groq_nutrition(label: str):
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        return {
+            "calories": "N/A",
+            "protein": "N/A",
+            "carbs": "N/A",
+            "fat": "N/A",
+            "serving_size": "N/A",
+            "health_rating": "🟡 Estimated",
+            "why": "GROQ_API_KEY missing.",
+            "healthier_alternative": "Use a whole-food alternative",
+        }
+
+    client = Groq(api_key=api_key)
+    prompt = (
+        f"You are a nutrition expert. The food item is '{label}'. "
+        "Provide a short nutrition summary in plain text with these fields: "
+        "Calories, Protein, Carbohydrates, Fat, Serving Size, Health Rating, Why, Healthier Alternative. "
+        "Use short values and a concise health explanation."
+    )
+    try:
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": "You are a helpful nutrition assistant."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.3,
+            max_tokens=250,
+            timeout=15,
+        )
+        text = response.choices[0].message.content.strip()
+        info = {
+            "calories": "N/A",
+            "protein": "N/A",
+            "carbs": "N/A",
+            "fat": "N/A",
+            "serving_size": "N/A",
+            "health_rating": "🟡 Estimated",
+            "why": "",
+            "healthier_alternative": "",
+        }
+        for line in text.splitlines():
+            if ":" not in line:
+                continue
+            key, value = line.split(":", 1)
+            key = key.strip().lower()
+            value = value.strip()
+            if "calorie" in key:
+                info["calories"] = value
+            elif "protein" in key:
+                info["protein"] = value
+            elif "carbohydrate" in key or "carbs" in key:
+                info["carbs"] = value
+            elif key.startswith("fat"):
+                info["fat"] = value
+            elif "serving size" in key:
+                info["serving_size"] = value
+            elif "health rating" in key:
+                info["health_rating"] = value
+            elif "why" in key:
+                info["why"] = value
+            elif "healthier alternative" in key:
+                info["healthier_alternative"] = value
+        return info
+    except Exception as e:
+        return {
+            "calories": "N/A",
+            "protein": "N/A",
+            "carbs": "N/A",
+            "fat": "N/A",
+            "serving_size": "N/A",
+            "health_rating": "🟡 Estimated",
+            "why": f"Nutrition lookup failed: {e}",
+            "healthier_alternative": "Use a whole-food alternative",
+        }
+
 
 @st.cache_resource(show_spinner="🔄 Loading Food Recognition model…")
 def load_model():
@@ -73,7 +241,7 @@ def load_model():
     model = CLIPModel.from_pretrained(MODEL_ID)
     model.eval()
 
-    prompts = [f"a photo of {f}" for f in FOOD_LABELS]
+    prompts = [f"a high quality photo of {f}" for f in FOOD_LABELS]
     text_inputs = processor(
         text=prompts, return_tensors="pt", padding=True, truncation=True
     )
@@ -123,6 +291,14 @@ def fmt(label: str) -> str:
     return label.strip().replace("_", " ").title()
 
 
+def health_label(confidence: float) -> str:
+    if confidence >= 0.75:
+        return "✅ High confidence"
+    if confidence >= 0.45:
+        return "⚠️ Medium confidence"
+    return "❌ Low confidence"
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  PAGE UI
 # ═══════════════════════════════════════════════════════════════════
@@ -169,32 +345,53 @@ if uploaded_file is not None:
 
         # Primary prediction
         top_label, top_conf = results[0]
+        nutrition = get_nutrition_info(top_label)
+        if nutrition["calories"] == "N/A":
+            nutrition = query_groq_nutrition(top_label)
+
         st.markdown(
             f"""
-            <div class="glass-card" style="text-align:center; padding:2rem;">
-                <h3 style="font-size:1.6rem; margin-bottom:0.4rem;">{fmt(top_label)}</h3>
-                <p style="font-size:1.1rem; color:#A78BFA;">
-                    Confidence: <b>{top_conf:.1%}</b>
-                </p>
+            <div class="glass-card" style="padding:2rem;">
+                <h2 style="font-size:1.8rem; margin-bottom:0.2rem;">📸 Upload your food photo</h2>
+                <p style="font-size:1.1rem; margin-bottom:1rem; color:#C4B5FD;">Your image has been analysed successfully.</p>
+                <h3 style="font-size:1.6rem; margin-bottom:0.3rem;">✅ Food Identified: {fmt(top_label)}</h3>
+                <p style="font-size:1.1rem; color:#A78BFA; margin-bottom:0.25rem;">{health_label(top_conf)}</p>
+                <p style="font-size:1.1rem;">🎯 Confidence: <b>{top_conf:.1%}</b></p>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-        # Multiple items detected
+        st.markdown('<div class="section-header">📊 Nutrition Information</div>', unsafe_allow_html=True)
+        c1, c2 = st.columns(2, gap="large")
+        with c1:
+            st.metric("Calories", nutrition["calories"])
+            st.metric("Protein", nutrition["protein"])
+            st.metric("Carbohydrates", nutrition["carbs"])
+        with c2:
+            st.metric("Fat", nutrition["fat"])
+            st.metric("Serving Size", nutrition["serving_size"])
+            st.metric("Health Rating", nutrition["health_rating"])
+
+        st.markdown(
+            f"<div class=\"glass-card\" style=\"padding:1.2rem;\">"
+            f"<p><strong>Why:</strong> {nutrition['why']}</p>"
+            f"<p><strong>Healthier Alternative:</strong> {nutrition['healthier_alternative']}</p>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
         also_detected = [
             (l, c) for l, c in results[1:] if c >= MULTI_DETECT_THRESHOLD
         ]
         if also_detected:
-            st.write("")
-            st.markdown("**🍽️ Also Detected in Image**")
+            st.markdown("**🍽️ Also detected in the image:**")
             for label, conf in also_detected:
-                st.progress(conf, text=f"{fmt(label)} — {conf:.1%}")
+                st.write(f"• {fmt(label)} — {conf:.1%}")
 
-        st.write("")
         st.markdown("**Top 5 Predictions**")
         for label, conf in results[:5]:
-            st.progress(conf, text=f"{fmt(label)} — {conf:.1%}")
+            st.write(f"• {fmt(label)} — {conf:.1%}")
 
     st.divider()
     st.info(

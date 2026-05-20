@@ -135,7 +135,6 @@ def render_meal(meal_type, data):
     meal_name = data.get("meal_name", "Unknown Meal")
     description = data.get("description", "")
     ingredients = data.get("ingredients", [])
-
     def fmt(val, suffix):
         if val is None:
             return "—"
@@ -149,30 +148,85 @@ def render_meal(meal_type, data):
     carb_text = fmt(data.get("carbs_g"), "g")
     fat_text = fmt(data.get("fat_g"), "g")
 
+    def _to_num(x):
+        try:
+            return float(x)
+        except Exception:
+            try:
+                return float(str(x).split()[0])
+            except Exception:
+                return None
+
+    cal_val = _to_num(data.get("calories"))
+    prot_val = _to_num(data.get("protein_g"))
+    fat_val = _to_num(data.get("fat_g"))
+    ing_count = len(ingredients) if isinstance(ingredients, list) else 0
+
+    # Heuristic: healthy if calories per meal <= 600 and protein >= 10g
+    is_healthy = False
+    if cal_val is not None and prot_val is not None:
+        is_healthy = (cal_val <= 600 and prot_val >= 10)
+
+    # Heuristic: easy if <=5 ingredients
+    is_easy = ing_count <= 5
+
     with st.expander(f"{icon}  **{meal_type.capitalize()}** — {meal_name}", expanded=True):
         if description:
             st.caption(description)
-        
+
         # Display ingredients if available
         if ingredients and isinstance(ingredients, list) and len(ingredients) > 0:
             st.markdown("**🥘 Ingredients:**")
-            ing_text = ""
+            ing_lines = []
             for ing in ingredients:
                 if isinstance(ing, dict):
                     item = ing.get("item", "")
                     quantity = ing.get("quantity", "")
                     unit = ing.get("unit", "")
                     if item:
-                        ing_text += f"• {quantity} {unit} {item}\n" if quantity and unit else f"• {item}\n"
-            if ing_text:
-                st.markdown(ing_text)
-        
+                        if quantity and unit:
+                            ing_lines.append(f"• {quantity} {unit} {item}")
+                        elif quantity:
+                            ing_lines.append(f"• {quantity} {item}")
+                        else:
+                            ing_lines.append(f"• {item}")
+            if ing_lines:
+                st.markdown("\n".join(ing_lines))
+
         # Display macros
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Calories", cal_text)
         c2.metric("Protein", prot_text)
         c3.metric("Carbs", carb_text)
         c4.metric("Fat", fat_text)
+
+        # Quick health & ease indicators
+        tags = []
+        tags.append("🟢 Healthy" if is_healthy else "🟡 Moderate" if cal_val is not None else "⚪ Unknown")
+        tags.append("✅ Easy to make" if is_easy else "🔪 Moderate effort")
+        st.markdown("**Tags:** " + " • ".join(tags))
+
+        # Quick recipe generation if no explicit instructions provided
+        def make_quick_recipe(name, ingredients_list):
+            if not ingredients_list:
+                return "No recipe data available."
+            items = []
+            for ing in ingredients_list:
+                if isinstance(ing, dict):
+                    qty = ing.get("quantity", "")
+                    unit = ing.get("unit", "")
+                    item = ing.get("item", "")
+                    part = " ".join([p for p in [str(qty).strip(), unit, item] if p])
+                    items.append(part)
+            steps = []
+            steps.append(f"1) Prepare: gather {', '.join(items[:6])}.")
+            steps.append("2) Combine ingredients as appropriate (mix/season).")
+            steps.append("3) Cook as needed: pan-fry or bake until done, then serve.")
+            return "\n".join(steps)
+
+        if ingredients and isinstance(ingredients, list) and len(ingredients) > 0:
+            st.markdown("**📖 Quick Recipe**")
+            st.code(make_quick_recipe(meal_name, ingredients))
 
 
 def render_weekly(plan):

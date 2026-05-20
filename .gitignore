@@ -36,3 +36,9 @@ logs/
 dist/
 build/
 *.egg-info/
+
+# Local Chroma vector database
+chroma_db/
+
+# Nutrition document binaries
+nutrition_docs/*.pdf

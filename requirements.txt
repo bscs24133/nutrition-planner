@@ -7,3 +7,8 @@ torchvision
 Pillow
 reportlab
 supabase
+langchain
+langchain-community
+chromadb
+sentence-transformers
+pypdf
