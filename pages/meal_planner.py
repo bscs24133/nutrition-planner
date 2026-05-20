@@ -2,6 +2,14 @@ import streamlit as st
 import json, os, re
 from dotenv import load_dotenv
 from groq import Groq
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+from reportlab.lib.units import inch
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from io import BytesIO
+from auth_functions import save_meal_plan
 
 load_dotenv()
 
@@ -66,8 +74,7 @@ def generate_plan(profile):
     if not api_key:
         st.error("🔑 GROQ_API_KEY not found. Add it to your .env file.")
         return None
-
-    # Try up to 3 times
+    # Try up to 3 times with improved logging and a longer timeout
     for attempt in range(3):
         try:
             client = Groq(api_key=api_key)
@@ -80,18 +87,32 @@ def generate_plan(profile):
                      "content": build_prompt(profile)},
                 ],
                 temperature=0.7,
-                max_tokens=2000,  # reduced from 4096
-                timeout=30,       # 30 second timeout
+                max_tokens=3000,
+                timeout=60,
             )
-            result = parse_plan(resp.choices[0].message.content)
+
+            # Safely extract the assistant content
+            try:
+                raw_content = resp.choices[0].message.content
+            except Exception:
+                raw_content = str(resp)
+
+            result = parse_plan(raw_content)
             if result:
                 return result
-            # If parse failed, try again
+
+            # Parsing failed — show raw response on final attempt to aid debugging
             if attempt < 2:
-                st.warning(f"⚠️ Attempt {attempt+1} failed, retrying...")
+                st.warning(f"⚠️ Attempt {attempt+1} failed to parse response, retrying...")
                 continue
+            else:
+                st.error("❌ Could not parse the meal plan. Please try again.")
+                with st.expander("Raw AI response (for debugging)", expanded=False):
+                    st.code(raw_content[:10000])
+                return None
 
         except Exception as e:
+            # On last attempt, show exception details
             if attempt == 2:
                 st.error(f"❌ Failed after 3 attempts: {e}")
                 return None
@@ -173,6 +194,93 @@ def render_weekly(plan):
     c4.metric("Total Fat", f"{tf:,} g", f"~{tf//max(dc,1)} g/day")
 
 
+def generate_pdf(plan, profile):
+    """Generate PDF of meal plan"""
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
+    story = []
+    styles = getSampleStyleSheet()
+    
+    # Title
+    title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], 
+                                  fontSize=24, textColor=colors.HexColor('#7C3AED'),
+                                  spaceAfter=6, alignment=TA_CENTER, fontName='Helvetica-Bold')
+    story.append(Paragraph("🍽️ Your 7-Day AI Meal Plan", title_style))
+    
+    # Profile summary
+    summary_style = ParagraphStyle('Summary', parent=styles['Normal'], fontSize=10, spaceAfter=12)
+    profile_text = f"""
+    <b>Daily Target:</b> {profile['calories']} kcal | <b>Goal:</b> {profile['goal']} | <b>Diet:</b> {', '.join(profile['diet_type']) if isinstance(profile['diet_type'], list) else profile['diet_type']}
+    """
+    story.append(Paragraph(profile_text, summary_style))
+    story.append(Spacer(1, 0.2*inch))
+    
+    day_names = {"day_1":"Monday","day_2":"Tuesday","day_3":"Wednesday",
+                 "day_4":"Thursday","day_5":"Friday","day_6":"Saturday","day_7":"Sunday"}
+    
+    for day_idx, dk in enumerate(sorted(plan)):
+        # Day header
+        day_style = ParagraphStyle('DayHeader', parent=styles['Heading2'], 
+                                   fontSize=14, textColor=colors.HexColor('#7C3AED'),
+                                   spaceAfter=10, fontName='Helvetica-Bold')
+        story.append(Paragraph(f"📅 {day_names.get(dk, dk)}", day_style))
+        
+        # Meals for the day
+        meal_icons = {"breakfast": "🌅", "lunch": "☀️", "dinner": "🌙", "snacks": "🍎"}
+        for meal_type in ("breakfast", "lunch", "dinner", "snacks"):
+            if meal_type in plan[dk]:
+                meal_data = plan[dk][meal_type]
+                meal_name = meal_data.get("meal_name", "Unknown")
+                description = meal_data.get("description", "")
+                ingredients = meal_data.get("ingredients", [])
+                calories = meal_data.get("calories", 0)
+                protein = meal_data.get("protein_g", 0)
+                carbs = meal_data.get("carbs_g", 0)
+                fat = meal_data.get("fat_g", 0)
+                
+                meal_style = ParagraphStyle('MealTitle', parent=styles['Normal'], 
+                                           fontSize=11, fontName='Helvetica-Bold',
+                                           spaceAfter=4)
+                story.append(Paragraph(f"{meal_icons[meal_type]} <b>{meal_type.capitalize()}:</b> {meal_name}", meal_style))
+                
+                if description:
+                    desc_style = ParagraphStyle('Description', parent=styles['Normal'], fontSize=9, spaceAfter=3)
+                    story.append(Paragraph(f"<i>{description}</i>", desc_style))
+                
+                # Ingredients
+                if ingredients and isinstance(ingredients, list):
+                    ing_text = "<b>Ingredients:</b> "
+                    for ing in ingredients:
+                        if isinstance(ing, dict):
+                            item = ing.get("item", "")
+                            qty = ing.get("quantity", "")
+                            unit = ing.get("unit", "")
+                            if item:
+                                ing_text += f"{qty} {unit} {item}, "
+                    ing_text = ing_text.rstrip(", ")
+                    ing_style = ParagraphStyle('Ingredients', parent=styles['Normal'], fontSize=8, spaceAfter=3)
+                    story.append(Paragraph(ing_text, ing_style))
+                
+                # Macros
+                macros_text = f"<b>Nutrition:</b> {calories} kcal | Protein: {protein}g | Carbs: {carbs}g | Fat: {fat}g"
+                macros_style = ParagraphStyle('Macros', parent=styles['Normal'], fontSize=8, 
+                                             spaceAfter=6, textColor=colors.HexColor('#666666'))
+                story.append(Paragraph(macros_text, macros_style))
+        
+        if day_idx < 6:
+            story.append(Spacer(1, 0.15*inch))
+    
+    # Footer
+    story.append(Spacer(1, 0.3*inch))
+    footer_style = ParagraphStyle('Footer', parent=styles['Normal'], fontSize=8, 
+                                 alignment=TA_CENTER, textColor=colors.HexColor('#999999'))
+    story.append(Paragraph("Generated by AI Nutrition Planner • Powered by Groq", footer_style))
+    
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+
+
 # ── Page UI ─────────────────────────────────────────────────────────
 st.markdown(
     '<div class="hero-banner"><h1>🍽️ Meal Planner</h1>'
@@ -228,9 +336,28 @@ if submitted:
             plan = generate_plan(profile)
         if plan:
             st.session_state["meal_plan"] = plan
+            st.session_state["goal"] = goal
+            st.session_state["diet_type"] = diet_type
+            st.session_state["daily_calories"] = cals
             st.success("✅ Your 7-day meal plan is ready!")
         else:
             st.error("Could not parse the meal plan. Please try again.")
+
+if "meal_plan" not in st.session_state:
+    if st.button("Use sample plan for testing (populate Save & PDF)"):
+        sample = {}
+        for i in range(1,8):
+            dayk = f"day_{i}"
+            sample[dayk] = {
+                "breakfast": {"meal_name": "Oatmeal", "description": "Oats with fruit", "ingredients": [{"item":"oats","quantity":"50","unit":"g"}], "calories":250, "protein_g":8, "carbs_g":40, "fat_g":6},
+                "lunch": {"meal_name": "Chicken Salad", "description": "Grilled chicken salad", "ingredients": [{"item":"chicken breast","quantity":"100","unit":"g"}], "calories":450, "protein_g":35, "carbs_g":20, "fat_g":20},
+                "dinner": {"meal_name": "Salmon & Veg", "description": "Baked salmon", "ingredients": [{"item":"salmon","quantity":"150","unit":"g"}], "calories":600, "protein_g":40, "carbs_g":30, "fat_g":25},
+                "snacks": {"meal_name": "Yogurt", "description": "Greek yogurt", "ingredients": [{"item":"yogurt","quantity":"150","unit":"g"}], "calories":200, "protein_g":15, "carbs_g":18, "fat_g":6}
+            }
+        st.session_state["meal_plan"] = sample
+        st.session_state["goal"] = st.session_state.get("goal", "Maintain Weight")
+        st.session_state["diet_type"] = st.session_state.get("diet_type", ["No Restriction"]) 
+        st.session_state["daily_calories"] = st.session_state.get("daily_calories", 2000)
 
 if "meal_plan" in st.session_state:
     plan = st.session_state["meal_plan"]
@@ -246,5 +373,48 @@ if "meal_plan" in st.session_state:
                 if m in plan[dk]: render_meal(m, plan[dk][m])
     st.divider()
     render_weekly(plan)
+    
+    # Save and Download buttons
+    st.markdown('<p class="section-header">💾 Save & Download</p>', unsafe_allow_html=True)
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("💾 Save to Saved Plans", use_container_width=True, type="primary"):
+            user_id = st.session_state.user.id
+            try:
+                success, message = save_meal_plan(
+                    user_id=user_id,
+                    plan_text=json.dumps(plan),
+                    daily_calories=st.session_state.get("daily_calories", 2000),
+                    goal=st.session_state.get("goal", "Maintain Weight"),
+                    diet_type=",".join(st.session_state.get("diet_type", [])) if isinstance(st.session_state.get("diet_type"), list) else st.session_state.get("diet_type", ""),
+                    feedback=""
+                )
+                if success:
+                    st.success("✅ Meal plan saved to Saved Plans!")
+                else:
+                    st.error(f"❌ Error saving: {message}")
+            except Exception as e:
+                st.error(f"❌ Error: {str(e)}")
+    
+    with col2:
+        if st.button("📥 Download as PDF", use_container_width=True):
+            try:
+                # Get profile data from session
+                profile = {
+                    "calories": st.session_state.get("daily_calories", 2000),
+                    "goal": st.session_state.get("goal", "Maintain Weight"),
+                    "diet_type": st.session_state.get("diet_type", [])
+                }
+                pdf_buffer = generate_pdf(plan, profile)
+                st.download_button(
+                    label="📥 Click to Download PDF",
+                    data=pdf_buffer,
+                    file_name="meal_plan.pdf",
+                    mime="application/pdf",
+                    use_container_width=True
+                )
+            except Exception as e:
+                st.error(f"❌ Error generating PDF: {str(e)}")
 
 st.markdown('<div class="app-footer">Powered by Groq · Llama 3.3 70B Versatile</div>', unsafe_allow_html=True)

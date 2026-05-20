@@ -39,13 +39,6 @@ with st.form("profile_form"):
         placeholder="Your full name"
     )
     
-    bio = st.text_area(
-        "Bio (optional)",
-        value=profile.get("bio", "") if profile else "",
-        placeholder="Tell us about yourself...",
-        height=100
-    )
-    
     age = st.number_input(
         "Age",
         min_value=13,
@@ -53,10 +46,10 @@ with st.form("profile_form"):
         value=int(profile.get("age", 25)) if profile and profile.get("age") else 25
     )
     
-    goal = st.selectbox(
+    fitness_goal = st.selectbox(
         "Fitness Goal",
         ["Lose Weight", "Maintain Weight", "Gain Muscle", "Gain Weight"],
-        index=0 if not profile else ["Lose Weight", "Maintain Weight", "Gain Muscle", "Gain Weight"].index(profile.get("goal", "Lose Weight")) if profile.get("goal") in ["Lose Weight", "Maintain Weight", "Gain Muscle", "Gain Weight"] else 0
+        index=0 if not profile else ["Lose Weight", "Maintain Weight", "Gain Muscle", "Gain Weight"].index(profile.get("fitness_goal", "Lose Weight")) if profile.get("fitness_goal") in ["Lose Weight", "Maintain Weight", "Gain Muscle", "Gain Weight"] else 0
     )
     
     submitted = st.form_submit_button("💾 Save Profile", use_container_width=True, type="primary")
@@ -69,9 +62,8 @@ if submitted:
             try:
                 profile_data = {
                     "full_name": full_name,
-                    "bio": bio,
                     "age": age,
-                    "goal": goal,
+                    "fitness_goal": fitness_goal,
                     "updated_at": "now()"
                 }
                 success, message = save_profile(user_id, profile_data)
