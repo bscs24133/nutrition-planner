@@ -14,51 +14,76 @@ st.markdown(
     """
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-    * { font-family: 'Inter', sans-serif; }
+    html, body { background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%) !important; }
+    * { font-family: 'Inter', sans-serif; color: #1f2937; }
+    [data-testid="stAppViewContainer"] { background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); }
+    [data-testid="stBaseLayer"] { background: transparent; }
 
     [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #12101C 0%, #1A1D29 100%);
-        border-right: 1px solid rgba(108, 99, 255, 0.15);
+        background: linear-gradient(180deg, #f0fdf4 0%, #f9fafb 100%);
+        border-right: 2px solid rgba(16, 185, 129, 0.2);
     }
+    [data-testid="stSidebar"] * { color: #1f2937; }
 
     .hero-banner {
-        background: linear-gradient(135deg, #6C63FF 0%, #A855F7 50%, #EC4899 100%);
+        background: linear-gradient(135deg, #10b981 0%, #059669 50%, #047857 100%);
         padding: 2.5rem 2rem; border-radius: 16px; text-align: center;
-        margin-bottom: 2rem; box-shadow: 0 8px 32px rgba(108, 99, 255, 0.25);
+        margin-bottom: 2rem; box-shadow: 0 8px 32px rgba(16, 185, 129, 0.25);
     }
     .hero-banner h1 { color: #FFF !important; font-weight: 800; font-size: 2.4rem; margin-bottom: .3rem; }
     .hero-banner p  { color: rgba(255,255,255,.88); font-size: 1.1rem; font-weight: 300; }
 
     .glass-card {
-        background: rgba(255,255,255,.04); border: 1px solid rgba(108,99,255,.18);
+        background: #ffffff; border: 1px solid rgba(16, 185, 129, 0.18);
         border-radius: 14px; padding: 1.6rem; backdrop-filter: blur(12px);
         transition: transform .25s ease, box-shadow .25s ease;
     }
-    .glass-card:hover { transform: translateY(-4px); box-shadow: 0 12px 28px rgba(108,99,255,.18); }
-    .glass-card h3 { color: #A78BFA; margin-bottom: .5rem; }
-    .glass-card p  { color: rgba(250,250,250,.72); font-size: .95rem; line-height: 1.55; }
+    .glass-card:hover { transform: translateY(-4px); box-shadow: 0 12px 28px rgba(16, 185, 129, 0.18); }
+    .glass-card h3 { color: #10b981; margin-bottom: .5rem; }
+    .glass-card p  { color: rgba(31, 41, 55, 0.72); font-size: .95rem; line-height: 1.55; }
 
     [data-testid="stMetric"] {
-        background: rgba(108,99,255,.08); border: 1px solid rgba(108,99,255,.18);
+        background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.18);
         border-radius: 12px; padding: 1rem 1.2rem;
     }
-    [data-testid="stMetricLabel"] { color: #A78BFA !important; }
-    [data-testid="stMetricValue"] { color: #FAFAFA !important; font-weight: 700; }
+    [data-testid="stMetricLabel"] { color: #10b981 !important; }
+    [data-testid="stMetricValue"] { color: #1f2937 !important; font-weight: 700; }
 
     .stButton > button {
-        background: linear-gradient(135deg, #6C63FF, #A855F7); color: white;
-        border: none; border-radius: 10px; padding: .6rem 1.8rem; font-weight: 600;
+        background: linear-gradient(135deg, #10b981, #059669); color: white;
+        border: none; border-radius: 14px; padding: .9rem 1.8rem; font-weight: 700;
         transition: all .3s ease;
     }
-    .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(108,99,255,.35); }
+    .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(16, 185, 129, 0.3); }
+    .stButton>button[disabled] { opacity: .65; cursor: not-allowed; }
 
-    hr { border: none; height: 1px; background: linear-gradient(90deg, transparent, rgba(108,99,255,.3), transparent); margin: 1.5rem 0; }
+    .stTextInput>div>div>input, .stTextArea>div>div>textarea, .stSelectbox>div>div>div>div {
+        background: #f9fafb !important;
+        color: #1f2937 !important;
+        border: 1px solid rgba(16, 185, 129, 0.18) !important;
+        border-radius: 12px !important;
+    }
+    .stTextInput>div>label, .stSelectbox>div>label, .stButton>label {
+        color: #1f2937 !important;
+    }
+    .streamlit-expanderHeader {
+        background: #f0fdf4;
+        border: 1px solid rgba(16, 185, 129, 0.12);
+        border-radius: 14px;
+    }
+    .css-1d391kg, .css-1awws6m { background: transparent; }
+    [data-testid="stMarkdownContainer"], [data-testid="stVerticalBlock"] { background: transparent !important; }
+    .stTabs [data-baseweb="tab-list"] { background-color: transparent; }
+    .stTabs [data-baseweb="tab"] { background-color: #e0f2fe; color: #1f2937; }
+    .stTabs [aria-selected="true"] { background-color: #10b981 !important; color: white !important; }
+
+    hr { border: none; height: 1px; background: linear-gradient(90deg, transparent, rgba(16, 185, 129, 0.3), transparent); margin: 1.5rem 0; }
 
     .section-header {
-        color: #A78BFA; font-weight: 700; font-size: 1.35rem; margin-bottom: .6rem;
-        padding-bottom: .3rem; border-bottom: 2px solid rgba(108,99,255,.2); display: inline-block;
+        color: #10b981; font-weight: 700; font-size: 1.35rem; margin-bottom: .6rem;
+        padding-bottom: .3rem; border-bottom: 2px solid rgba(16, 185, 129, 0.2); display: inline-block;
     }
-    .app-footer { text-align: center; color: rgba(250,250,250,.35); font-size: .82rem; padding: 2rem 0 1rem; }
+    .app-footer { text-align: center; color: rgba(31, 41, 55, 0.35); font-size: .82rem; padding: 2rem 0 1rem; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -76,10 +101,11 @@ if st.session_state.user:
     home_page = st.Page(str(base_path / "pages" / "home.py"), title="Home", icon="🏠")
     meal_planner_page = st.Page(str(base_path / "pages" / "meal_planner.py"), title="Meal Planner", icon="🍽️")
     food_analyzer_page = st.Page(str(base_path / "pages" / "food_analyzer.py"), title="Food Analyzer", icon="📸")
+    nutrition_qa_page = st.Page(str(base_path / "pages" / "nutrition_qa.py"), title="Nutrition Q&A", icon="🔬")
     saved_plans_page = st.Page(str(base_path / "pages" / "saved_plans.py"), title="Saved Plans", icon="📊")
     profile_page = st.Page(str(base_path / "pages" / "profile.py"), title="My Profile", icon="👤")
     
-    pages = [home_page, meal_planner_page, food_analyzer_page, saved_plans_page, profile_page]
+    pages = [home_page, meal_planner_page, food_analyzer_page, nutrition_qa_page, saved_plans_page, profile_page]
     
     # Add logout button in sidebar
     with st.sidebar:

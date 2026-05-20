@@ -135,3 +135,30 @@ def delete_meal_plan(plan_id):
         return True
     except:
         return False
+
+
+def save_qa_entry(user_id, question, answer):
+    """Save a QA entry (question + answer) for a user."""
+    try:
+        supabase.table("qa_history").insert({
+            "user_id": user_id,
+            "question": question,
+            "answer": answer
+        }).execute()
+        return True, "Saved"
+    except Exception as e:
+        return False, str(e)
+
+
+def get_qa_history(user_id, limit=50):
+    """Retrieve recent QA history for a user."""
+    try:
+        resp = supabase.table("qa_history")\
+            .select("question,answer,created_at")\
+            .eq("user_id", user_id)\
+            .order("created_at", desc=True)\
+            .limit(limit)\
+            .execute()
+        return resp.data or []
+    except Exception:
+        return []
